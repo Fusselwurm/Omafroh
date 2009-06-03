@@ -4,6 +4,16 @@
 * user script for Omas Bilderrahmen :P
 *
 *
+* communication w/ php-script:
+*  request
+*    action=checkList
+*    imgs=[JSON array of image urls]
+*
+*  returns
+*    JSON array - same order as request - of (img url and?) state (unknown|inlist|notinlist)
+*
+*
+*
 *
 * @author Moritz Schmidt (fusselwurm@gmail.com)
 */
@@ -11,7 +21,26 @@ var OMA = (function () {
 
 	var images = [];
 	var addImg = function (img) {
-		images.push(img);
+		var logo = document.createElement('img');
+
+		img.style.position = 'relative';
+		img.style.cursor = 'pointer';
+		img.parentNode.insertBefore(logo, img); // FIXME
+
+		var idx = images.length;
+		img.addEventListener('click', function () {
+			switch (images[idx].state) {
+				case 'inlist': OMA.removeImage(idx);
+				case 'notinlist': OMA.addImage(idx);
+				default: OMA.panic(); // :P
+			}
+		});
+
+		images.push({
+			img: img,
+			logo: logo
+			state: 'unknown',
+		});
 	};
 
 	var scan = function () {
@@ -40,20 +69,28 @@ var OMA = (function () {
 			urls: imgs
 		}, function (data) {
 			// data: arrray of known URLs
-			for (var i = 0;
-			refreshLogo();
+			for (var i = 0; i < data.length; i++) {
+				imgs.state = data[i].state;
+			}
+			refreshUI();
 		});
 	};
 
 
-	var refreshLogo = function () {
-
+	var refreshUI = function () {
+		for (var i = 0; i < images.length; i++) {
+			switch (images[i].state) {
+				case 'inlist': images[i].logo.src = OMA.baseurl + 'inlist.png';
+				case 'notinlist': images[i].logo.src = OMA.baseurl + 'notinlist.png';
+				default: images[i].logo.src = OMA.baseurl + 'unknown.png';
+			}
+		}
 	};
 
 	return {
 		config: {
-			minWidth: 800,
-			minHeight: 600
+			minWidth: 400,
+			minHeight: 300
 		},
 		baseurl: 'http://omaserver.net/',
 		addScript: function (request) {
@@ -62,10 +99,6 @@ var OMA = (function () {
 			document.getElementsByTagName('head')[0].appendChild(s);
 		},
 		init: function () {
-			var body = document.getElementsByTagName('body')[0];
-			var img = document.createElement('img');
-			img.src = OMA.baseurl + 'logo_empty.png';
-			body.appendChild(img);
 
 			// scan for images
 			scan();
@@ -75,6 +108,31 @@ var OMA = (function () {
 		},
 		getImages: function () {
 			return images; // TODO limit access
+		},
+		addImage: function (i) {
+			OMA.getData({
+				action: 'add',
+				url: images[i].url
+			});
+		},
+		removeImage: function (i) {
+			OMA.getData({
+				action: 'remove',
+				url: images[i].url
+			});
+		},
+		/**
+		* @param image - DOM element or url
+		* @return index or -1
+		*/
+		indexOf: function (image) {
+			var i;
+			for (i = 0; i < images.length; i++) {
+				if ((image === images[i].img) || (image === images[i].img.src)) {
+					return i;
+				}
+			}
+			return -1;
 		}
 	};
 }());
