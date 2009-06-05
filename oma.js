@@ -514,7 +514,7 @@ window.OMA = (function () {
 
 		img.style.position = 'relative';
 		img.style.cursor = 'pointer';
-		img.parentNode.insertBefore(logo, img); // FIXME
+		img.parentNode.insertBefore(logo, img);
 
 		var idx = images.length;
 		img.addEventListener('click', function () {
@@ -533,12 +533,24 @@ window.OMA = (function () {
 	};
 
 	var scan = function () {
-		var i, imgs = document.getElementsByTagName('img');
-		for (i = 0; i < imgs.length; i++) {
-			if ((imgs[i].naturalWidth > OMA.config.minWidth) &&
-			   (imgs[i].naturalHeight > OMA.config.minHeight)) {
+		var i, imgs = document.getElementsByTagName('img'), imgs2 = [];
 
-				addImg(imgs[i]);
+		// NOTE document.getElementsByTagName
+		// does *not* return a normal array, oh no, precious.
+		// the returned array is smart, and learns immediately
+		// about new elements with its tag name
+		// (which may be disastrous if we add images while
+		// looping over it)
+
+		// be careful and copy the array
+		for (i = 0; i < imgs.length; i++) {
+			imgs2.push(imgs[i]);
+		}
+
+		for (i = 0; i < imgs2.length; i++) {
+			if ((imgs2[i].naturalWidth > OMA.config.minWidth) &&
+			   (imgs2[i].naturalHeight > OMA.config.minHeight) && (imgs2[i].src.search(OMA.baseurl) === -1)) {
+				addImg(imgs2imgs[i]);
 			}
 		}
 	};
@@ -583,10 +595,10 @@ window.OMA = (function () {
 			minWidth: 100,
 			minHeight: 100
 		},
-		baseurl: 'http://wormfly/oma/',
+		baseurl: 'http://wormfly.5mm.de/oma/',
 		addScript: function (request) {
 			var s = document.createElement('script');
-			s.src = OMA.baseurl + 'oma.php?request=' + request;
+			s.src = OMA.baseurl + 'oma.php?type=script&request=' + request;
 			document.getElementsByTagName('head')[0].appendChild(s);
 			return s;
 		},
@@ -605,10 +617,18 @@ window.OMA = (function () {
 		*
 		*/
 		getData: function (req, fn) {
-			var s = OMA.addScript(encodeURIComponent(JSON.stringify(req)));
-			s.addEventListener('load', function () {
-				fn(OMA.lastmessage);
-			});
+			if (typeof GM_xmlhttpRequest === 'function') {
+				GM_xmlhttpRequest({
+					method: 'GET',
+					url: OMA.baseurl + 'oma.php?type=json&request=' + encodeURIComponent(JSON.stringify(req)),
+					onload: fn
+				});
+			} else {
+				var s = OMA.addScript(encodeURIComponent(JSON.stringify(req)));
+				s.addEventListener('load', function () {
+					fn(OMA.lastmessage);
+				});
+			}
 		},
 		addImage: function (i) {
 			OMA.getData({
