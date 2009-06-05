@@ -494,8 +494,10 @@ replace(/(?:^|:|,)(?:\s*\[)+/g, ''))) {
 *
 * communication w/ php-script:
 *  request
-*    action=checkList
-*    imgs=[JSON array of image urls]
+*  {
+*    action: 'checkList',
+*    imgs: [JSON array of image urls]
+*  }
 *
 *  returns
 *    JSON array - same order as request - of (img url and?) state (unknown|inlist|notinlist)
@@ -506,34 +508,80 @@ replace(/(?:^|:|,)(?:\s*\[)+/g, ''))) {
 *
 */
 
-window.OMA = (function () {
 
+Array.prototype.indexOf = function (item, name) {
+	var length = this.length;
+	for (var i = 0; i < length; i++) {
+		if ((name && (this[i][name] === item)) || (!name && (this[i] === item))) {
+			return i;
+		}
+	}
+	return -1;
+};
+
+OMA = (function () {
+
+	/**
+	* properties:
+	*   logo: <logo DOM element>,
+	*   img: <the image we track>
+	*   state: <if oma knows about it>
+	*   url: <url of the image, because we're to lazy to look it up in the img tag every time
+	*/
 	var images = [];
+
+	var getOutOfA = function (node) {
+		var aPresent = null,
+			it = node;
+		while (it) {
+			if  (it.tagName === 'a') {
+				aPresent = it;
+			}
+			it = it.parentNode;
+		}
+		return aPresent ? aPresent : node;
+	};
+
 	var addImg = function (img) {
+		OMA.logger.log('addImg: ' + img.src);
 		var logo = document.createElement('img');
 
-		img.style.position = 'relative';
-		img.style.cursor = 'pointer';
-		img.parentNode.insertBefore(logo, img);
+		logo.style.position = 'absolute';
+		logo.style.top = img.offsetTop + 'px';
+		logo.style.left = img.offsetLeft + 'px';
+		logo.style.cursor = 'pointer';
+		logo.style.zIndex = parseInt(img.style.zIndex, 10) + 1;
 
-		var idx = images.length;
-		img.addEventListener('click', function () {
-			switch (images[idx].state) {
-				case 'inlist': OMA.removeImage(idx);
-				case 'notinlist': OMA.addImage(idx);
-				default: OMA.panic(); // :P
-			}
-		}, false);
+		//  search upwards to find a way out of an <a>, if there is one
+		var node = getOutOfA(img.parentNode);
 
-		images.push({
+		node.parentNode.insertBefore(logo, node);
+
+		var thisimage = {
 			img: img,
 			logo: logo,
-			state: 'unknown'
-		});
+			state: 'unknown',
+			url: img.src
+		};
+		logo.addEventListener('click', function () {
+			switch (thisimage.state) {
+				case 'inlist':
+					OMA.removeImage(thisimage);
+					break;
+				case 'notinlist':
+					OMA.addImage(thisimage);
+					break;
+				default:
+					OMA.panic(); // :P
+			}
+			return false;
+		}, false);
+
+		images.push(thisimage);
 	};
 
 	var scan = function () {
-		var i, imgs = document.getElementsByTagName('img'), imgs2 = [];
+		var i, domImgs = document.getElementsByTagName('img'), fixedImgs = [];
 
 		// NOTE document.getElementsByTagName
 		// does *not* return a normal array, oh no, precious.
@@ -543,16 +591,17 @@ window.OMA = (function () {
 		// looping over it)
 
 		// be careful and copy the array
-		for (i = 0; i < imgs.length; i++) {
-			imgs2.push(imgs[i]);
+		for (i = 0; i < domImgs.length; i++) {
+			fixedImgs.push(domImgs[i]);
 		}
 
-		for (i = 0; i < imgs2.length; i++) {
-			if ((imgs2[i].naturalWidth > OMA.config.minWidth) &&
-			   (imgs2[i].naturalHeight > OMA.config.minHeight) && (imgs2[i].src.search(OMA.baseurl) === -1)) {
-				addImg(imgs2imgs[i]);
+		for (i = 0; i < fixedImgs.length; i++) {
+			if ((fixedImgs[i].naturalWidth > OMA.config.minWidth) &&
+			   (fixedImgs[i].naturalHeight > OMA.config.minHeight) && (fixedImgs[i].src.search(OMA.baseurl) === -1)) {
+				addImg(fixedImgs[i]);
 			}
 		}
+		OMA.logger.log('scan finished');
 	};
 
 	/**
@@ -563,17 +612,26 @@ window.OMA = (function () {
 	var refreshData = function () {
 		var i, imgs = [];
 		for (i = 0; i < images.length; i++) {
-			imgs.push(images[i].src);
+			imgs.push(images[i].url);
 		}
 		OMA.getData({
 			action: 'checkList',
 			urls: imgs
 		}, function (data) {
+			OMA.logger.log('got data');
 			// data: arrray of known URLs
-			if (typeof data === 'object') {
-				for (var i = 0; i < data.length; i++) {
-					imgs.state = data[i].state;
+			var idx;
+			if (data && data.status === 'ok') {
+				for (var i = 0; i < images.length; i++) {
+					idx = data.imgs.indexOf(images[i].url, 'url');
+					if (idx !== -1) {
+						images[i].state = data.imgs[idx].state;
+					} else {
+						OMA.logger.log('got no data for image ' + images[i].url);
+					}
 				}
+			} else {
+				OMA.panic('error from oma.php: ' + data.message);
 			}
 			refreshUI();
 		});
@@ -581,33 +639,45 @@ window.OMA = (function () {
 
 
 	var refreshUI = function () {
+		var lg;
 		for (var i = 0; i < images.length; i++) {
+			lg = images[i].logo;
 			switch (images[i].state) {
-				case 'inlist': images[i].logo.src = OMA.baseurl + 'inlist.png';
-				case 'notinlist': images[i].logo.src = OMA.baseurl + 'notinlist.png';
-				default: images[i].logo.src = OMA.baseurl + 'unknown.png';
+				case 'inlist':
+					lg.src = OMA.baseurl + 'inlist.png';
+					break;
+				case 'notinlist':
+					lg.src = OMA.baseurl + 'notinlist.png';
+					break;
+				default:
+					lg.src = OMA.baseurl + 'unknown.png';
 			}
 		}
 	};
 
 	return {
 		config: {
-			minWidth: 100,
-			minHeight: 100
+			minWidth: 50,
+			minHeight: 50
 		},
 		baseurl: 'http://wormfly.5mm.de/oma/',
-		addScript: function (request) {
-			var s = document.createElement('script');
-			s.src = OMA.baseurl + 'oma.php?type=script&request=' + request;
-			document.getElementsByTagName('head')[0].appendChild(s);
-			return s;
-		},
+
 		init: function () {
 
 			// scan for images
+			OMA.logger.log('start init');
 			scan();
 			refreshData();
+			OMA.logger.log('end init');
 
+		},
+		reinit: function () {
+			var img;
+			while(images.length > 0) {
+				var img = images.shift();
+				img.logo.parentNode.removeChild(logo);
+			}
+			OMA.init();
 		},
 		getImages: function () {
 			return images; // TODO limit access
@@ -617,29 +687,62 @@ window.OMA = (function () {
 		*
 		*/
 		getData: function (req, fn) {
-			if (typeof GM_xmlhttpRequest === 'function') {
+			// diese chromium-deppen, haben offensichtl schon nen function stub und geben dann true zurück,
+			// um gleich darauf not implemented zu rufen -.- danke.
+			if (typeof GM_xmlhttpRequest === 'function' && false) {
+				OMA.logger.log('addscriipt1_gm');
 				GM_xmlhttpRequest({
 					method: 'GET',
 					url: OMA.baseurl + 'oma.php?type=json&request=' + encodeURIComponent(JSON.stringify(req)),
 					onload: fn
 				});
 			} else {
-				var s = OMA.addScript(encodeURIComponent(JSON.stringify(req)));
-				s.addEventListener('load', function () {
-					fn(OMA.lastmessage);
-				});
+				OMA.logger.log('addscript1');
+				var s = document.createElement('script');
+				s.src = OMA.baseurl + 'oma.php?type=script&request=' + encodeURIComponent(JSON.stringify(req));
+				if (fn) {
+					OMA.logger.log('addscript2');
+					s.addEventListener('load', function () {
+						fn(OMA.lastmessage);
+					});
+					OMA.logger.log('addscriipt3');
+				}
+				document.getElementsByTagName('head')[0].appendChild(s);
+				OMA.logger.log('addscriipt4');
 			}
 		},
 		addImage: function (i) {
+			var url;
+			if ((typeof i === 'object') && i && i.url) {
+				url = i.url;
+			} else if (typeof i === 'number') {
+				url = images[i].url;
+			}
+			if (typeof url === 'undefined') {
+				OMA.panic('aiarg! could not addImage: ' + i);
+			}
 			OMA.getData({
 				action: 'add',
-				url: images[i].url
+				url: url
+			}, function () {
+				refreshData();
 			});
 		},
 		removeImage: function (i) {
+			var url;
+			if ((typeof i === 'object') && i && i.url) {
+				url = i.url;
+			} else if (typeof i === 'number') {
+				url = images[i].url;
+			}
+			if (typeof url === 'undefined') {
+				OMA.panic('aiarg! could not removeImage: ' + i);
+			}
 			OMA.getData({
 				action: 'remove',
-				url: images[i].url
+				url: url
+			}, function () {
+				refreshData();
 			});
 		},
 		/**
@@ -654,9 +757,34 @@ window.OMA = (function () {
 				}
 			}
 			return -1;
-		}
+		},
+		panic: function () {
+			alert('*kreisch*');
+		},
+		logger: (function () {
+			var msgs = [];
+			msgs.toString = function () {
+				var res = '', i;
+				for (i = 0; i < msgs.length; i++) {
+					res += msgs[i].msg + '\n';
+				}
+				return res;
+			}
+			return {
+				get: function () {
+					return msgs;
+				},
+				log: function (msg, lvl) {
+					msgs.push({
+						msg: msg,
+						lvl: lvl
+					});
+				}
+			};
+		}())
+
 	};
 }());
 
-
-OMA.init()
+document.getElementsByTagName('head')[0].OMA = OMA;
+window.addEventListener('load', OMA.init);
