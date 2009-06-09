@@ -537,38 +537,35 @@ OMA = (function () {
 	*/
 	var images = [];
 
-	var getOutOfA = function (node) {
-		var aPresent = null,
-			it = node;
-		while (it) {
-			if  (it.tagName === 'a') {
-				aPresent = it;
+	var getOffsets = function (node) {
+		var offsets = {
+				top: 0,
+				left: 0
+			};
+		while (node) {
+			if  (node.offsetParent) {
+				offsets.top += node.offsetTop;
+				offsets.left += node.offsetLeft;
 			}
-			it = it.parentNode;
+			node = node.offsetParent;
 		}
-		return aPresent ? aPresent : node;
+		return offsets;
 	};
 
 	var addImg = function (img) {
 		OMA.logger.log('addImg: ' + img.src);
 		var logo = document.createElement('img');
 
-
 		//  search upwards to find a way out of an <a>, if there is one
-		var node = getOutOfA(img.parentNode);
+		var offsets = getOffsets(img);
 
-			logo.style.position = 'absolute';
-			if (node.style.position) {
-				logo.style.top = node.offsetTop + 'px';
-				logo.style.left = node.offsetLeft + 'px';
-			}
-
+		logo.style.position = 'absolute';
+		logo.style.top = offsets.top + 'px';
+		logo.style.left = offsets.left + 'px';
 		logo.style.cursor = 'pointer';
 		logo.style.zIndex = parseInt(img.style.zIndex, 10) + 1;
 
-
-
-		node.parentNode.insertBefore(logo, node);
+		document.body.appendChild(logo);
 
 		var thisimage = {
 			img: img,
