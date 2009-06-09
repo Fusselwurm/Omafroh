@@ -6,6 +6,12 @@
 // @author Moritz Schmidt (fusselwurm@gmail.com)
 // ==/UserScript==
 
+OMA = {
+	minWidth: 50,
+	minHeight: 50,
+	passwd: 'grmlblubb',
+	baseurl: 'http://wormfly/oma/'
+};
 
 /*
     http://www.JSON.org/json2.js
@@ -488,6 +494,7 @@ replace(/(?:^|:|,)(?:\s*\[)+/g, ''))) {
 
 
 
+
 /**
 * user script for Omas Bilderrahmen :P
 *
@@ -546,14 +553,20 @@ OMA = (function () {
 		OMA.logger.log('addImg: ' + img.src);
 		var logo = document.createElement('img');
 
-		logo.style.position = 'absolute';
-		logo.style.top = img.offsetTop + 'px';
-		logo.style.left = img.offsetLeft + 'px';
-		logo.style.cursor = 'pointer';
-		logo.style.zIndex = parseInt(img.style.zIndex, 10) + 1;
 
 		//  search upwards to find a way out of an <a>, if there is one
 		var node = getOutOfA(img.parentNode);
+
+			logo.style.position = 'absolute';
+			if (node.style.position) {
+				logo.style.top = node.offsetTop + 'px';
+				logo.style.left = node.offsetLeft + 'px';
+			}
+
+		logo.style.cursor = 'pointer';
+		logo.style.zIndex = parseInt(img.style.zIndex, 10) + 1;
+
+
 
 		node.parentNode.insertBefore(logo, node);
 
@@ -572,7 +585,7 @@ OMA = (function () {
 					OMA.addImage(thisimage);
 					break;
 				default:
-					OMA.panic(); // :P
+					OMA.panic('image in unknown state!'); // :P
 			}
 			return false;
 		}, false);
@@ -597,7 +610,7 @@ OMA = (function () {
 
 		for (i = 0; i < fixedImgs.length; i++) {
 			if ((fixedImgs[i].naturalWidth > OMA.config.minWidth) &&
-			   (fixedImgs[i].naturalHeight > OMA.config.minHeight) && (fixedImgs[i].src.search(OMA.baseurl) === -1)) {
+			   (fixedImgs[i].naturalHeight > OMA.config.minHeight) && (fixedImgs[i].src.search(OMA.config.baseurl) === -1)) {
 				addImg(fixedImgs[i]);
 			}
 		}
@@ -631,7 +644,7 @@ OMA = (function () {
 					}
 				}
 			} else {
-				OMA.panic('error from oma.php: ' + data.message);
+				OMA.panic('error from oma.php: ' + JSON.stringify(data));
 			}
 			refreshUI();
 		});
@@ -644,26 +657,21 @@ OMA = (function () {
 			lg = images[i].logo;
 			switch (images[i].state) {
 				case 'inlist':
-					lg.src = OMA.baseurl + 'inlist.png';
+					lg.src = OMA.config.baseurl + 'inlist.png';
 					break;
 				case 'notinlist':
-					lg.src = OMA.baseurl + 'notinlist.png';
+					lg.src = OMA.config.baseurl + 'notinlist.png';
 					break;
 				default:
-					lg.src = OMA.baseurl + 'unknown.png';
+					lg.src = OMA.config.baseurl + 'unknown.png';
 			}
 		}
 	};
 
 	return {
-		config: {
-			minWidth: 50,
-			minHeight: 50
-		},
-		baseurl: 'http://wormfly.5mm.de/oma/',
+		config: OMA,
 
 		init: function () {
-
 			// scan for images
 			OMA.logger.log('start init');
 			scan();
@@ -689,17 +697,24 @@ OMA = (function () {
 		getData: function (req, fn) {
 			// diese chromium-deppen, haben offensichtl schon nen function stub und geben dann true zurück,
 			// um gleich darauf not implemented zu rufen -.- danke.
-			if (typeof GM_xmlhttpRequest === 'function' && false) {
-				OMA.logger.log('addscriipt1_gm');
+			if (typeof GM_xmlhttpRequest === 'function' && true) {
+				OMA.logger.log('addscript1_gm');
 				GM_xmlhttpRequest({
 					method: 'GET',
-					url: OMA.baseurl + 'oma.php?type=json&request=' + encodeURIComponent(JSON.stringify(req)),
-					onload: fn
+					url: OMA.config.baseurl + 'oma.php?passwd=' + OMA.config.passwd + '&type=json&request=' + encodeURIComponent(JSON.stringify(req)),
+					onload: function (data) {
+						try {
+							data = JSON.parse(data.responseText);
+							fn(data);
+						} catch(e) {
+							OMA.logger.log('error parsing json: "' + data.responseText + '"');
+						}
+					}
 				});
 			} else {
 				OMA.logger.log('addscript1');
 				var s = document.createElement('script');
-				s.src = OMA.baseurl + 'oma.php?type=script&request=' + encodeURIComponent(JSON.stringify(req));
+				s.src = OMA.config.baseurl + 'oma.php?passwd=' + OMA.config.passwd + '&type=script&request=' + encodeURIComponent(JSON.stringify(req));
 				if (fn) {
 					OMA.logger.log('addscript2');
 					s.addEventListener('load', function () {
@@ -758,8 +773,9 @@ OMA = (function () {
 			}
 			return -1;
 		},
-		panic: function () {
-			alert('*kreisch*');
+		panic: function (msg) {
+			OMA.logger.log(msg, 'error');
+			alert('*kreisch* : ' + msg);
 		},
 		logger: (function () {
 			var msgs = [];
@@ -775,6 +791,9 @@ OMA = (function () {
 					return msgs;
 				},
 				log: function (msg, lvl) {
+					if (typeof console !== 'undefined' && console && typeof console.log === 'function') {
+						console.log(msg);
+					}
 					msgs.push({
 						msg: msg,
 						lvl: lvl
@@ -782,9 +801,7 @@ OMA = (function () {
 				}
 			};
 		}())
-
 	};
 }());
 
-document.getElementsByTagName('head')[0].OMA = OMA;
-window.addEventListener('load', OMA.init);
+window.addEventListener('load', OMA.init, true);
