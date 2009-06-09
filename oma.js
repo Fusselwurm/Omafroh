@@ -4,12 +4,30 @@
 // @description    Verwaltet Omas Bilderrahmen
 // @include        http://*/*
 // @author Moritz Schmidt (fusselwurm@gmail.com)
+//
+// how to use:
+// * put everything but oma.js onto a php server of your choice,
+//   (/me thinks it should be php5)
+// * the cache directory and the database.txt have to be writable by php
+// * install this oma.js in your browser (eg with greasemonkey in firefox)
+// * change the passwd in this file (see OMA declaration below) and in the oma.php
+// * adjust the baseurl in this file (see OMA declaration below)
+// * if you want:
+//    * change things like minWidth and minHeight to adjust the minimal picture sizes
+//    * change the pictures inlist, notinlist, unknown.png
+//
+//
+//
 // ==/UserScript==
 
 OMA = {
+	// adjust to set minimum size for pictures
 	minWidth: 50,
 	minHeight: 50,
+	// change this here and in oma.php.
+	// it's not much security, but waaaay better than nothing.
 	passwd: 'grmlblubb',
+	// adjust to the directory on your webserver where the php file sits
 	baseurl: 'http://wormfly/oma/'
 };
 
